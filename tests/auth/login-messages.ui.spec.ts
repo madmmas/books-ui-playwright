@@ -1,36 +1,35 @@
-import { API_PATHS, ERROR_CODES } from "../../src/constants.js";
+import { API_PATHS } from "../../src/constants.js";
 import { expect, test } from "../fixtures.js";
 
 /**
  * How the page renders each API outcome.
  *
  * These use page.route to return a fixed response, which makes every case
- * instant and deterministic. Mocks prove the UI handles the contract; they
- * prove nothing about the backend, so each mocked body must match the shape the
- * API suite asserts (books-api-tests/src/schemas/auth.schemas.ts). When that
- * contract changes, both repos change together.
+ * instant and deterministic. Bodies match the live auth service
+ * (`error` + optional `captcha`), not the older { code, message } demo contract.
  */
 const cases = [
   {
     name: "invalid credentials",
     status: 401,
-    body: { code: ERROR_CODES.invalidCredentials, message: "Invalid username or password" },
-    expectedCode: ERROR_CODES.invalidCredentials,
-    expectedText: /invalid username or password/i,
+    body: { error: "Username or password is invalid" },
+    expectedText: /username or password is invalid/i,
   },
   {
     name: "captcha required",
     status: 400,
-    body: { code: ERROR_CODES.captchaRequired, message: "Captcha verification failed" },
-    expectedCode: ERROR_CODES.captchaRequired,
+    body: {
+      error: "Captcha verification failed",
+      code: "captcha_required",
+      captcha: "frictionless",
+    },
     expectedText: /captcha/i,
   },
   {
     name: "validation error",
     status: 400,
-    body: { code: ERROR_CODES.validationError, message: "username and password are required" },
-    expectedCode: ERROR_CODES.validationError,
-    expectedText: /required/i,
+    body: { error: "Username and password are required" },
+    expectedText: /username and password are required/i,
   },
 ];
 
@@ -46,10 +45,9 @@ test.describe("Login error rendering", () => {
       // Act
       await loginPage.login("someone@example.test", "some-password");
 
-      // Assert
+      // Assert: the live page echoes `error`; it does not expose data-error-code.
       await expect(loginPage.error).toBeVisible();
       await expect(loginPage.error).toHaveText(testCase.expectedText);
-      expect(await loginPage.errorCode()).toBe(testCase.expectedCode);
     });
   }
 

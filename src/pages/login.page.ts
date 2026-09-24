@@ -24,7 +24,14 @@ export class LoginPage {
     this.username = page.getByLabel("Username");
     this.password = page.getByLabel("Password");
     this.submit = page.getByRole("button", { name: "Sign in" });
-    this.error = page.getByTestId(TEST_IDS.loginError).or(page.getByRole("alert"));
+    this.error = page
+      .getByTestId(TEST_IDS.loginError)
+      .or(page.getByRole("alert"))
+      .or(
+        page.getByText(
+          /failed to fetch|request failed|username or password is invalid|login failed|captcha|username and password are required/i,
+        ),
+      );
     this.captchaVerified = page.locator("[data-altcha-state='verified'], altcha-widget");
   }
 
@@ -56,11 +63,13 @@ export class LoginPage {
     await this.password.fill(password);
     await this.waitForCaptcha();
 
-    const responsePromise = this.page.waitForResponse(
-      (res) => res.url().includes(API_PATHS.jwtLogin) && res.request().method() === "POST",
-    );
-    await this.submit.click();
-    return responsePromise;
+    const [response] = await Promise.all([
+      this.page.waitForResponse(
+        (res) => res.url().includes(API_PATHS.jwtLogin) && res.request().method() === "POST",
+      ),
+      this.submit.click(),
+    ]);
+    return response;
   }
 
   /** The machine-readable error code, which survives copy changes. */

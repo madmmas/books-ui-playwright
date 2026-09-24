@@ -107,15 +107,7 @@
       const errorBox = document.querySelector("[data-testid='login-error']");
       const captcha = document.getElementById("captcha");
 
-      // Messages are chosen by error CODE, never echoed from the server, so an
-      // internal message can never reach the user.
-      const MESSAGES = {
-        invalid_credentials: "Invalid username or password.",
-        captcha_required: "Captcha check failed. Please try again.",
-        captcha_invalid: "Captcha check failed. Please try again.",
-        validation_error: "Username and password are required.",
-      };
-      const GENERIC = "Something went wrong. Please try again.";
+      const GENERIC = "Request failed";
 
       let solution = null;
 
@@ -151,7 +143,7 @@
         captcha.dataset.altchaState = "failed";
       }
 
-      function showError(code, message) {
+      function showError(message, code = "") {
         errorBox.textContent = message;
         errorBox.dataset.errorCode = code;
         errorBox.hidden = false;
@@ -169,7 +161,7 @@
 
         // Client-side validation first: no request is sent for empty fields.
         if (!username.value.trim() || !password.value) {
-          showError("validation_error", MESSAGES.validation_error);
+          showError("Username and password are required", "validation_error");
           return;
         }
 
@@ -188,19 +180,14 @@
             const body = await res.json();
             localStorage.setItem("accessToken", body.accessToken);
             localStorage.setItem("refreshToken", body.refreshToken);
-            window.location.assign("/home");
-            return;
-          }
-
-          if (res.status >= 500) {
-            showError("internal_error", GENERIC);
+            window.location.assign("/");
             return;
           }
 
           const body = await res.json().catch(() => ({}));
-          showError(body.code ?? "unknown_error", MESSAGES[body.code] ?? GENERIC);
-        } catch {
-          showError("network_error", GENERIC);
+          showError(body.error ?? GENERIC, body.code ?? "");
+        } catch (err) {
+          showError(err instanceof Error ? err.message : "Failed to fetch");
         } finally {
           submit.disabled = false;
         }

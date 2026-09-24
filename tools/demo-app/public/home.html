@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Home - Books Library</title>
+    <title>Books Library</title>
     <style>
       body {
         font-family: system-ui, sans-serif;
@@ -14,13 +14,29 @@
     </style>
   </head>
   <body>
-    <script>
-      // Guard runs before render so a signed-out visitor never sees the page.
-      if (!localStorage.getItem("accessToken")) window.location.replace("/login");
-    </script>
+    <header>
+      <a href="/">Books Library</a>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/signin">Sign in</a>
+        <button type="button" id="logout" hidden>Logout</button>
+      </nav>
+    </header>
     <main data-testid="home-root">
-      <h1>Your library</h1>
-      <p>You are signed in.</p>
+      <h1>Find your next book</h1>
+      <p>Browse listed titles. Sign in to place orders.</p>
     </main>
+    <script>
+      const token = localStorage.getItem("accessToken");
+      const logout = document.getElementById("logout");
+      if (token) {
+        logout.hidden = false;
+        logout.addEventListener("click", () => {
+          localStorage.clear();
+          sessionStorage.clear();
+          window.location.assign("/");
+        });
+      }
+    </script>
   </body>
 </html>

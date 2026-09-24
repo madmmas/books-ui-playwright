@@ -16,15 +16,15 @@ const PORT = Number(process.env.DEMO_APP_PORT ?? 3000);
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "public");
 const HMAC_SECRET = "demo-altcha-secret";
 
+const buyerUser = {
+  id: "usr_" + randomUUID(),
+  password: process.env.BUYER_PASSWORD ?? "Passw0rd!",
+  role: "user",
+};
 const USERS = new Map([
-  [
-    (process.env.BUYER_USERNAME ?? "buyer@example.com").toLowerCase(),
-    {
-      id: "usr_" + randomUUID(),
-      password: process.env.BUYER_PASSWORD ?? "Password123!",
-      role: "user",
-    },
-  ],
+  [(process.env.BUYER_USERNAME ?? "buyer").toLowerCase(), buyerUser],
+  ["buyer", buyerUser],
+  ["buyer@example.com", buyerUser],
 ]);
 
 const usedChallenges = new Set();
@@ -94,21 +94,19 @@ function handleLogin(body, res) {
 
   const captchaError = verifyAltcha(altcha);
   if (captchaError) {
-    return sendJson(res, 400, { code: captchaError, message: "Captcha verification failed" });
+    return sendJson(res, 400, {
+      error: "Captcha verification failed",
+      code: captchaError,
+      captcha: "frictionless",
+    });
   }
   if (typeof username !== "string" || typeof password !== "string" || !username || !password) {
-    return sendJson(res, 400, {
-      code: "validation_error",
-      message: "username and password are required",
-    });
+    return sendJson(res, 400, { error: "Username and password are required" });
   }
 
   const user = USERS.get(username.trim().toLowerCase());
   if (!user || user.password !== password) {
-    return sendJson(res, 401, {
-      code: "invalid_credentials",
-      message: "Invalid username or password",
-    });
+    return sendJson(res, 401, { error: "Username or password is invalid" });
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -124,8 +122,10 @@ const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
 
   if (req.method === "GET") {
-    if (url.pathname === "/" || url.pathname === "/login") return void sendHtml(res, "login.html");
-    if (url.pathname === "/home") return void sendHtml(res, "home.html");
+    if (url.pathname === "/signin" || url.pathname === "/login")
+      return void sendHtml(res, "login.html");
+    if (url.pathname === "/" || url.pathname === "/home") return void sendHtml(res, "home.html");
+    if (url.pathname === "/orders") return void sendHtml(res, "orders.html");
     if (url.pathname === "/health") return sendJson(res, 200, { status: "ok" });
     if (url.pathname === "/favicon.ico") {
       res.writeHead(204);
@@ -141,13 +141,13 @@ const server = createServer((req, res) => {
       try {
         handleLogin(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"), res);
       } catch {
-        sendJson(res, 400, { code: "validation_error", message: "Body is not valid JSON" });
+        sendJson(res, 400, { error: "Username and password are required" });
       }
     });
     return;
   }
 
-  return sendJson(res, 404, { code: "not_found", message: "Unknown endpoint" });
+  return sendJson(res, 404, { error: "Unknown endpoint" });
 });
 
 server.listen(PORT, () => {

@@ -1,5 +1,5 @@
 import { config } from "../../src/config.js";
-import { ERROR_CODES, ROUTES } from "../../src/constants.js";
+import { API_PATHS, ROUTES } from "../../src/constants.js";
 import { expect, test } from "../fixtures.js";
 
 /**
@@ -9,6 +9,10 @@ import { expect, test } from "../fixtures.js";
  * question: does the page do the right thing with what the API returns?
  */
 test.describe("Login UI", () => {
+  // Failed logins increment a shared per-IP counter on the live API (3 strikes
+  // → interactive captcha). These tests must not run side by side.
+  test.describe.configure({ mode: "serial" });
+
   test.beforeEach(async ({ loginPage }) => {
     await loginPage.goto();
   });
@@ -36,7 +40,7 @@ test.describe("Login UI", () => {
       // Assert
       expect(response.status()).toBe(401);
       await expect(loginPage.error).toBeVisible();
-      expect(await loginPage.errorCode()).toBe(ERROR_CODES.invalidCredentials);
+      await expect(loginPage.error).toHaveText(/username or password is invalid/i);
       await expect(page).toHaveURL(new RegExp(ROUTES.login));
     },
   );
@@ -108,20 +112,22 @@ test.describe("Login UI", () => {
     },
   );
 
-  test("UI-AUTH-07 empty fields are rejected without a request", async ({ page, loginPage }) => {
-    // Arrange: fail the test if the page sends a request it should have blocked.
-    let requestSent = false;
-    page.on("request", (req) => {
-      if (req.url().includes("/auth/jwt/login")) requestSent = true;
-    });
+  test("UI-AUTH-07 empty fields are rejected", async ({ page, loginPage }) => {
+    // The live page has no client-side required check; the API rejects the POST.
+    const responsePromise = page.waitForResponse(
+      (res) => res.url().includes(API_PATHS.jwtLogin) && res.request().method() === "POST",
+    );
 
     // Act
     await loginPage.waitForCaptcha();
     await loginPage.submit.click();
+    const response = await responsePromise;
 
-    // Assert: client-side validation keeps the user on the form.
-    await expect(loginPage.form).toBeVisible();
-    expect(requestSent).toBe(false);
+    // Assert
+    expect(response.status()).toBe(400);
+    await expect(loginPage.error).toBeVisible();
+    await expect(loginPage.error).toHaveText(/username and password are required/i);
+    await expect(page).toHaveURL(new RegExp(ROUTES.login));
   });
 
   test("UI-AUTH-08 a second attempt after a failure can succeed", async ({

@@ -2,6 +2,17 @@ import { ROUTES } from "../../src/constants.js";
 import { expect, test } from "../fixtures.js";
 
 /**
+ * Optional clients the login page already degrades without:
+ * Unleash flags (HTTPS origin → HTTP :4242 is CORS-blocked) and Altcha
+ * (the live stack 404s /auth/captcha/challenge when the flag is off).
+ */
+const OPTIONAL_CLIENT = /unleash|:4242\/|\/api\/frontend|blocked by cors policy|\/auth\/captcha\/challenge/i;
+
+const isOptionalClientNoise = (text: string): boolean => OPTIONAL_CLIENT.test(text);
+const isOptionalClientUrl = (url: string): boolean =>
+  /:4242\/|\/auth\/captcha\/challenge/i.test(url);
+
+/**
  * Runs first in CI. If the web app is not serving, this fails in seconds
  * instead of leaving every login test to time out.
  */
@@ -27,19 +38,21 @@ test.describe("App health", () => {
       const consoleErrors: string[] = [];
       const failedRequests: string[] = [];
 
-      page.on("pageerror", (err) => jsErrors.push(err.message));
+      page.on("pageerror", (err) => {
+        if (!isOptionalClientNoise(err.message)) jsErrors.push(err.message);
+      });
       page.on("console", (msg) => {
         // "Failed to load resource" duplicates what the response listener below
         // reports, with no URL attached. Drop it and judge by the response.
-        if (msg.type() === "error" && !/failed to load resource/i.test(msg.text())) {
-          consoleErrors.push(msg.text());
-        }
+        if (msg.type() !== "error" || /failed to load resource/i.test(msg.text())) return;
+        if (isOptionalClientNoise(msg.text())) return;
+        consoleErrors.push(msg.text());
       });
       page.on("response", (res) => {
-        // A missing favicon is cosmetic and not worth failing a health check on.
-        if (res.status() >= 400 && !res.url().endsWith("/favicon.ico")) {
-          failedRequests.push(`${res.status()} ${res.url()}`);
-        }
+        // Favicon and the Unleash flag client are not part of the login page.
+        if (res.status() < 400) return;
+        if (res.url().endsWith("/favicon.ico") || isOptionalClientUrl(res.url())) return;
+        failedRequests.push(`${res.status()} ${res.url()}`);
       });
 
       // Act

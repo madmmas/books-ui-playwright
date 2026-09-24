@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Home - Books Library</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem;
+        color: #1a1a1a;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      // Guard runs before render so a signed-out visitor never sees the page.
+      if (!localStorage.getItem("accessToken")) window.location.replace("/login");
+    </script>
+    <main data-testid="home-root">
+      <h1>Your library</h1>
+      <p>You are signed in.</p>
+    </main>
+  </body>
+</html>

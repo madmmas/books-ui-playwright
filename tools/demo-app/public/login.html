@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign in - Books Library</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: system-ui, sans-serif;
+        background: #ffffff;
+        color: #1a1a1a;
+      }
+      main {
+        width: min(24rem, 90vw);
+        padding: 1rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-weight: 600;
+      }
+      input {
+        width: 100%;
+        padding: 0.6rem;
+        margin-bottom: 1rem;
+        font-size: 1rem;
+        border: 1px solid #595959;
+        border-radius: 4px;
+        background: #ffffff;
+        color: #1a1a1a;
+      }
+      button {
+        width: 100%;
+        padding: 0.7rem;
+        font-size: 1rem;
+        border: 0;
+        border-radius: 4px;
+        background: #12457f;
+        color: #ffffff;
+        cursor: pointer;
+      }
+      button[disabled] {
+        background: #5a6b7d;
+        cursor: progress;
+      }
+      .error {
+        background: #fdeaec;
+        border: 1px solid #a3001b;
+        color: #a3001b;
+        padding: 0.6rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+      }
+      .captcha {
+        font-size: 0.85rem;
+        color: #4a4a4a;
+        margin-bottom: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Books Library</h1>
+      <form data-testid="login-form" novalidate>
+        <p class="error" role="alert" data-testid="login-error" data-error-code="" hidden></p>
+
+        <label for="username">Username</label>
+        <input
+          id="username"
+          name="username"
+          type="text"
+          autocomplete="username"
+          data-testid="login-username"
+        />
+
+        <label for="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          data-testid="login-password"
+        />
+
+        <p class="captcha" id="captcha" data-altcha-state="pending">Verifying you are human...</p>
+
+        <button type="submit" data-testid="login-submit">Sign in</button>
+      </form>
+    </main>
+
+    <script type="module">
+      const form = document.querySelector("[data-testid='login-form']");
+      const username = document.getElementById("username");
+      const password = document.getElementById("password");
+      const submit = document.querySelector("[data-testid='login-submit']");
+      const errorBox = document.querySelector("[data-testid='login-error']");
+      const captcha = document.getElementById("captcha");
+
+      // Messages are chosen by error CODE, never echoed from the server, so an
+      // internal message can never reach the user.
+      const MESSAGES = {
+        invalid_credentials: "Invalid username or password.",
+        captcha_required: "Captcha check failed. Please try again.",
+        captcha_invalid: "Captcha check failed. Please try again.",
+        validation_error: "Username and password are required.",
+      };
+      const GENERIC = "Something went wrong. Please try again.";
+
+      let solution = null;
+
+      const toHex = (buffer) =>
+        [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+      async function solveCaptcha() {
+        captcha.dataset.altchaState = "pending";
+        captcha.textContent = "Verifying you are human...";
+        solution = null;
+
+        const challenge = await (await fetch("/auth/altcha/challenge")).json();
+        const encoder = new TextEncoder();
+
+        for (let n = 0; n <= (challenge.maxnumber ?? 100000); n++) {
+          const digest = await crypto.subtle.digest("SHA-256", encoder.encode(challenge.salt + n));
+          if (toHex(digest) === challenge.challenge) {
+            solution = btoa(
+              JSON.stringify({
+                algorithm: challenge.algorithm,
+                challenge: challenge.challenge,
+                number: n,
+                salt: challenge.salt,
+                signature: challenge.signature,
+              }),
+            );
+            captcha.textContent = "Verified.";
+            captcha.dataset.altchaState = "verified";
+            return;
+          }
+        }
+        captcha.textContent = "Verification failed. Reload the page.";
+        captcha.dataset.altchaState = "failed";
+      }
+
+      function showError(code, message) {
+        errorBox.textContent = message;
+        errorBox.dataset.errorCode = code;
+        errorBox.hidden = false;
+      }
+
+      function clearError() {
+        errorBox.hidden = true;
+        errorBox.textContent = "";
+        errorBox.dataset.errorCode = "";
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        clearError();
+
+        // Client-side validation first: no request is sent for empty fields.
+        if (!username.value.trim() || !password.value) {
+          showError("validation_error", MESSAGES.validation_error);
+          return;
+        }
+
+        const altcha = solution;
+        submit.disabled = true;
+        void solveCaptcha(); // start a fresh challenge for the next attempt
+
+        try {
+          const res = await fetch("/auth/jwt/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: username.value, password: password.value, altcha }),
+          });
+
+          if (res.ok) {
+            const body = await res.json();
+            localStorage.setItem("accessToken", body.accessToken);
+            localStorage.setItem("refreshToken", body.refreshToken);
+            window.location.assign("/home");
+            return;
+          }
+
+          if (res.status >= 500) {
+            showError("internal_error", GENERIC);
+            return;
+          }
+
+          const body = await res.json().catch(() => ({}));
+          showError(body.code ?? "unknown_error", MESSAGES[body.code] ?? GENERIC);
+        } catch {
+          showError("network_error", GENERIC);
+        } finally {
+          submit.disabled = false;
+        }
+      });
+
+      void solveCaptcha();
+    </script>
+  </body>
+</html>

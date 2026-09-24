@@ -1,0 +1,3 @@
+# SDETs own the test suite. Frontend owns the test hooks the suite depends on.
+*                 @books/sdet
+/src/pages/       @books/sdet @books/frontend
